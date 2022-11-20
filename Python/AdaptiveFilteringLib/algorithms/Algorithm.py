@@ -93,31 +93,31 @@ import os
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 #cuda
+# device = "cuda:0"
+# n = 1000
+# L = 10000
+# weight_ori = torch.from_numpy(numpy.random.normal(size=(n, 1))).to(device)
+# weight_target = torch.from_numpy(numpy.random.normal(size=(n, 1))).to(device)
+# # noise = noise.MixedGaussionNoiseGenerator(mean=(1,2,3),sigma=(3,2,1)).getNoise(shape=(1,L),backend="pytorch",device=device)
+# noise = numpy.random.normal(size=(1, L))
+# input = torch.from_numpy(numpy.random.normal(size=(n, L))).to(device)
+# algo = LMS(0.001, n, L)
+# res = algo.iterate(input, weight_ori, noise, weight_target, criterion=cri.getNorm("pytorch"),backend="pytorch")
+# x = numpy.linspace(0, len(res), len(res))
+# plt.plot(x, res)
+# plt.title("n=1000")
+# plt.show()
+
 device = "cuda:0"
 n = 1000
 L = 10000
-weight_ori = torch.from_numpy(numpy.random.normal(size=(n, 1))).to(device)
-weight_target = torch.from_numpy(numpy.random.normal(size=(n, 1))).to(device)
-noise = noise.GaussianNoiseGenerator(0,1).getNoise(shape=(1,L),backend="pytorch",device=device)
+weight_ori = numpy.random.normal(size=(n, 1))
+weight_target = numpy.random.normal(size=(n, 1))
+noise = noise.MixedGaussionNoiseGenerator((1,2,3,4,5),(5,4,3,2,1),(1,2,3,4,5)).getNoise(shape=(1,L))
 # noise = numpy.random.normal(size=(1, L))
-input = torch.from_numpy(numpy.random.normal(size=(n, L))).to(device)
-algo = LMS(0.01, n, L)
-res = algo.iterate(input, weight_ori, noise, weight_target, criterion=cri.getNorm("pytorch"),backend="pytorch")
+input = numpy.random.normal(size=(n, L))
+algo = LMS(0.001, n, L)
+res = algo.iterate(input, weight_ori, noise, weight_target, criterion=cri.getNorm())
 x = numpy.linspace(0, len(res), len(res))
 plt.plot(x, res)
-plt.title("n=1000")
 plt.show()
-
-# device = "cuda:0"
-# n = 1000000
-# L = 10000
-# weight_ori = numpy.random.normal(size=(n, 1))
-# weight_target = numpy.random.normal(size=(n, 1))
-# noise = noise.GaussianNoiseGenerator(0,1).getNoise(shape=(1,L))
-# # noise = numpy.random.normal(size=(1, L))
-# input = numpy.random.normal(size=(n, L))
-# algo = LMS(0.01, n, L)
-# res = algo.iterate(input, weight_ori, noise, weight_target, criterion=cri.getNorm())
-# x = numpy.linspace(0, len(res), len(res))
-# plt.plot(x, res)
-# plt.show()

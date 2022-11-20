@@ -104,7 +104,7 @@ class MixedGaussionNoiseGenerator(NoiseGeneratorBase):
         self.mean = (0,)
         self.sigma = (1,)
 
-    def __init__(self, mean: tuple, sigma: tuple):
+    def __init__(self, mean: tuple, sigma: tuple, weight:tuple):
         """
 
         :param mean: tuple, mean values for the gaussian noise
@@ -116,6 +116,8 @@ class MixedGaussionNoiseGenerator(NoiseGeneratorBase):
                 f"the length of parameter mean is {len(mean)},which does not match the parameter sigma({len(sigma)})")
         self.mean = mean
         self.sigma = sigma
+        self.weights = weight
+        self.wei_sum = sum(weight)
 
     def setMean(self, mean: tuple):
         """
@@ -139,7 +141,7 @@ class MixedGaussionNoiseGenerator(NoiseGeneratorBase):
                 f"the length of parameter mean is {len(sigma)},which does not match the shape of former one({len(self.sigma)})")
         self.sigma = sigma
 
-    def setMeanAndSigma(self, mean: tuple, sigma: tuple):
+    def setMeanAndSigma(self, mean: tuple, sigma: tuple, weight:tuple):
         """
 
         :param mean:
@@ -151,6 +153,8 @@ class MixedGaussionNoiseGenerator(NoiseGeneratorBase):
                 f"the length of parameter mean is {len(mean)},which does not match the parameter sigma({len(sigma)})")
         self.mean = mean
         self.sigma = sigma
+        self.weights = weight
+        self.wei_sum = sum(weight)
 
     def getNoise(self, shape: tuple, backend='numpy', device=None):
         """
@@ -161,9 +165,9 @@ class MixedGaussionNoiseGenerator(NoiseGeneratorBase):
         """
         if backend == 'numpy':
             result = numpy.zeros(shape=shape)
-            weight_map = numpy.random.randint(0, len(self.mean), size=shape)
+            weight_map = numpy.random.rand(*shape)
             for i in range(0, len(self.mean)):
-                result = result + (weight_map == i) * numpy.random.normal(self.mean[i], self.sigma[i], size=shape)
+                result = result + (weight_map<(self.weights[i]/self.wei_sum)) * numpy.random.normal(self.mean[i], self.sigma[i], size=shape)
             return result
 
         elif backend == 'pytorch':
@@ -171,11 +175,16 @@ class MixedGaussionNoiseGenerator(NoiseGeneratorBase):
             weight_map = torch.randint(0, len(self.mean), size=shape,
                                        device=device if device is not None else torch_device)
             for i in range(0, len(self.mean)):
-                result = result + (weight_map == i) * torch.normal(mean=self.mean[i], std=self.sigma[i], size=shape)
+                result = result + (weight_map <(self.weights[i]/self.wei_sum)) * torch.normal(mean=self.mean[i], std=self.sigma[i], size=shape,device=device if device is not None else torch_device)
             return result
         else:
             raise ValueError(f"Unknown backend:{backend}, supported backend is numpy and pytorch")
 
+import os
 
-# x = MixedGaussionNoiseGenerator((1, 2, 3), (3, 2, 1))
-# print(x.getNoise((1, 2, 3, 4)))
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+y = MixedGaussionNoiseGenerator((1, 500), (1,0),(5,1)).getNoise((100,))
+import matplotlib.pyplot as plt
+x = numpy.linspace(1,len(y),len(y))
+plt.plot(x,y)
+plt.show()
