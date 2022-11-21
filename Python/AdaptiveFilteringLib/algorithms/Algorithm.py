@@ -124,7 +124,7 @@ n = 100
 L = 10000
 weight_ori = torch.from_numpy(numpy.random.normal(size=(n, 1))).to(device)
 weight_target = torch.from_numpy(numpy.random.normal(size=(n, 1))).to(device)
-noise = noise.MixedGaussionNoiseGenerator(mean=(1,2,3),sigma=(3,2,1),weight=(8,7,6)).getNoise(shape=(1,L),backend="pytorch",device=device)
+noise = noise.LaplaceNoiseGenerator(0,1).getNoise(shape=(1,L),backend="pytorch",device=device)
 # noise = numpy.random.normal(size=(1, L))
 input = torch.from_numpy(numpy.random.normal(size=(n, L))).to(device)
 algo = NLMS(0.1, n, L)

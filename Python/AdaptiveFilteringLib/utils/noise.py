@@ -16,18 +16,23 @@ import LibInfo
 
 try:
     import numpy as np
-except BaseException as e:
+except ModuleNotFoundError as e:
     logging.info(f"numpy is not successfully installed, numpy is necessary for {LibInfo.LIBNAME}")
     exit(-1)
 
 try:
     import torch
-except BaseException as e:
+except ModuleNotFoundError as e:
     logging.info(f"pytorch is recommended for {LibInfo.LIBNAME}")
 
 torch_device = LibInfo.TORCH_DEVICE
 
-
+def checkTorch():
+    try:
+        import torch
+    except ModuleNotFoundError as e:
+        logging.info(f"pytorch is recommended for {LibInfo.LIBNAME}")
+        exit(-1)
 def setTorchDeivce(device: str):
     """
 
@@ -88,10 +93,10 @@ class GaussianNoiseGenerator(NoiseGeneratorBase):
             return torch.normal(mean=self.mean, std=self.sigma, size=shape,
                                 device=device if device is not None else torch_device)
         else:
-            raise ValueError(f"Unknown backend:{backend}, supported backend is numpy and pytorch")
+            raise ValueError(f"Unknown backend:{backend}, supported backends are numpy and pytorch")
 
 
-class MixedGaussionNoiseGenerator(NoiseGeneratorBase):
+class LaplaceNoiseGenerator(NoiseGeneratorBase):
     """
 
     """
@@ -101,60 +106,18 @@ class MixedGaussionNoiseGenerator(NoiseGeneratorBase):
 
         """
         super().__init__()
-        self.mean = (0,)
-        self.sigma = (1,)
+        self.loc = 0
+        self.scale = 1
 
-    def __init__(self, mean: tuple, sigma: tuple, weight:tuple):
+    def __init__(self, loc, scale):
         """
 
-        :param mean: tuple, mean values for the gaussian noise
+        :param mean: mean value for the gaussian noise
         :param sigma:
         """
-        super(MixedGaussionNoiseGenerator, self).__init__()
-        if len(mean) != len(sigma):
-            raise ValueError(
-                f"the length of parameter mean is {len(mean)},which does not match the parameter sigma({len(sigma)})")
-        self.mean = mean
-        self.sigma = sigma
-        self.weights = weight
-        self.wei_sum = sum(weight)
-
-    def setMean(self, mean: tuple):
-        """
-
-        :param mean:
-        :return:
-        """
-        if len(mean) != len(self.mean):
-            raise ValueError(
-                f"the length of parameter mean is {len(mean)},which does not match the shape of former one({len(self.mean)})")
-        self.mean = mean
-
-    def setSigma(self, sigma: tuple):
-        """
-
-        :param sigma:
-        :return:
-        """
-        if len(sigma) != len(self.sigma):
-            raise ValueError(
-                f"the length of parameter mean is {len(sigma)},which does not match the shape of former one({len(self.sigma)})")
-        self.sigma = sigma
-
-    def setMeanAndSigma(self, mean: tuple, sigma: tuple, weight:tuple):
-        """
-
-        :param mean:
-        :param sigma:
-        :return:
-        """
-        if len(mean) != len(sigma):
-            raise ValueError(
-                f"the length of parameter mean is {len(mean)},which does not match the parameter sigma({len(sigma)})")
-        self.mean = mean
-        self.sigma = sigma
-        self.weights = weight
-        self.wei_sum = sum(weight)
+        super(LaplaceNoiseGenerator, self).__init__()
+        self.loc = loc
+        self.scale = scale
 
     def getNoise(self, shape: tuple, backend='numpy', device=None):
         """
@@ -164,27 +127,84 @@ class MixedGaussionNoiseGenerator(NoiseGeneratorBase):
         :return:
         """
         if backend == 'numpy':
+            return numpy.random.laplace(self.loc, self.scale, size=shape)
+        elif backend == 'pytorch':
+            global torch_device
+            return torch.tensor(numpy.random.laplace(self.loc, self.scale, size=shape),
+                                device=device if device is not None else torch_device)
+        # here we are not using torch.from_numpy to avoid some potential problems
+
+        else:
+            raise ValueError(f"Unknown backend:{backend}, supported backends are numpy and pytorch")
+
+
+class MixedNoiseGenerator(NoiseGeneratorBase):
+    def __init__(self, noiseGenerators: tuple, weights: tuple):
+        """
+
+        :param noiseGenerators:
+        :param weight:
+        """
+        super().__init__()
+        if len(noiseGenerators) != len(weights):
+            raise ValueError("the length of weight doesn't match noiseGenerator!")
+        self.noiseGenerators = noiseGenerators
+        self.weights = list(weights)
+        self.wei_sum = sum(weights)
+
+        for i in range(0, len(self.weights)):
+            if self.weights[i] < 0:
+                raise ValueError("weight cannot be negative, the input weights are:" + str(weights))
+
+            self.weights[i] = self.weights[i] / self.wei_sum
+        self.prefix_sum = self.weights
+        for i in range(1, len(self.weights)):
+            self.prefix_sum[i] = self.prefix_sum[i - 1] + self.prefix_sum[i]
+
+    def getNoise(self, shape: tuple, backend='numpy', device=None):
+        """
+
+        :param shape:
+        :param backend:
+        :param device:
+        :return:
+        """
+        if backend == 'numpy':
             result = numpy.zeros(shape=shape)
             weight_map = numpy.random.rand(*shape)
-            for i in range(0, len(self.mean)):
-                result = result + (weight_map<(self.weights[i]/self.wei_sum)) * numpy.random.normal(self.mean[i], self.sigma[i], size=shape)
+            result = result + (weight_map < self.prefix_sum[0]) * self.noiseGenerators[0].getNoise(shape=shape,
+                                                                                                backend='numpy')
+
+            for i in range(1, len(self.noiseGenerators)):
+                result = result + numpy.logical_and(weight_map >= self.prefix_sum[i - 1],weight_map < self.prefix_sum[i]) * \
+                         self.noiseGenerators[i].getNoise(shape=shape, backend='numpy')
             return result
 
         elif backend == 'pytorch':
             result = torch.zeros(size=shape, device=device if device is not None else torch_device)
-            weight_map = torch.randint(0, len(self.mean), size=shape,
-                                       device=device if device is not None else torch_device)
-            for i in range(0, len(self.mean)):
-                result = result + (weight_map <(self.weights[i]/self.wei_sum)) * torch.normal(mean=self.mean[i], std=self.sigma[i], size=shape,device=device if device is not None else torch_device)
+
+            weight_map = torch.rand(size=shape,
+                                    device=device if device is not None else torch_device)  # uniform distribution
+
+            result = result + (weight_map < self.weights[0]) * \
+                     self.noiseGenerators[0].getNoise(shape=shape, backend='pytorch',
+                                                      device=device if device is not None else torch_device)
+
+            for i in range(1, len(self.noiseGenerators)):
+                result = result + (torch.logical_and(weight_map >= self.prefix_sum[i - 1],weight_map < self.prefix_sum[i])) * \
+                         self.noiseGenerators[i].getNoise(shape=shape, backend='pytorch',
+                                                          device=device if device is not None else torch_device)
             return result
         else:
-            raise ValueError(f"Unknown backend:{backend}, supported backend is numpy and pytorch")
+            raise ValueError(f"Unknown backend:{backend}, supported backends are numpy and pytorch")
+
 
 import os
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
-y = MixedGaussionNoiseGenerator((1, 500), (1,0),(5,1)).getNoise((100,))
+y = MixedNoiseGenerator((GaussianNoiseGenerator(1,0),GaussianNoiseGenerator(10,0)),(1,1)).getNoise((100,),backend="pytorch",device="cuda:0").cpu().numpy()
 import matplotlib.pyplot as plt
-x = numpy.linspace(1,len(y),len(y))
-plt.plot(x,y)
+
+x = numpy.linspace(1, len(y), len(y))
+plt.plot(x, y)
 plt.show()
