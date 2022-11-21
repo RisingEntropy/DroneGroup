@@ -86,38 +86,64 @@ class LMS(AlgorithmBase):
                 error.append(criterion(weight, ground_truth).cpu().item())
             return error
         else:
-            raise ValueError(f"Unknown backend:{backend}, supported backend is numpy and pytorch")
+            raise ValueError(f"Unknown backend:{backend}, supported backends are numpy and pytorch")
 
+class NLMS(AlgorithmBase):
+    def __init__(self, step_size: float, n: int, data_len: int):
+        super().__init__(n, data_len)
+        self.step_size = step_size
+
+    def iterate(self, input, weight_ori, noise, ground_truth, criterion, backend="numpy"):
+        if backend == "numpy":
+            weight = weight_ori
+            d_k = numpy.matmul(ground_truth.T, input) + noise
+            error = []
+            for k in range(0, self.data_len):
+                err = d_k[:, k] - numpy.matmul(weight.T, input[:, k])
+                weight = weight + (self.step_size * err * input[:, k]/(numpy.matmul(input[:,k].T,input[:,k]))).reshape(weight.shape)
+                error.append(criterion(weight, ground_truth))
+            return error
+        elif backend == "pytorch":
+            weight = weight_ori
+            d_k = torch.mm(ground_truth.T, input) + noise
+            error = []
+            for k in range(0, self.data_len):
+                err = d_k[:, k] - torch.mm(weight.T, input[:, k].unsqueeze(dim=1))
+                weight = weight + (self.step_size * err * input[:, k] / (torch.mm(torch.unsqueeze(input[:, k], dim=1).T, torch.unsqueeze(input[:, k], dim=1)))).reshape(weight.shape)
+                error.append(criterion(weight, ground_truth).cpu().item())
+            return error
+        else:
+            raise ValueError(f"Unknown backend:{backend}, supported backends are numpy and pytorch")
 
 import os
 
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 #cuda
-# device = "cuda:0"
-# n = 1000
-# L = 10000
-# weight_ori = torch.from_numpy(numpy.random.normal(size=(n, 1))).to(device)
-# weight_target = torch.from_numpy(numpy.random.normal(size=(n, 1))).to(device)
-# # noise = noise.MixedGaussionNoiseGenerator(mean=(1,2,3),sigma=(3,2,1)).getNoise(shape=(1,L),backend="pytorch",device=device)
-# noise = numpy.random.normal(size=(1, L))
-# input = torch.from_numpy(numpy.random.normal(size=(n, L))).to(device)
-# algo = LMS(0.001, n, L)
-# res = algo.iterate(input, weight_ori, noise, weight_target, criterion=cri.getNorm("pytorch"),backend="pytorch")
-# x = numpy.linspace(0, len(res), len(res))
-# plt.plot(x, res)
-# plt.title("n=1000")
-# plt.show()
-
 device = "cuda:0"
-n = 1000
+n = 100
 L = 10000
-weight_ori = numpy.random.normal(size=(n, 1))
-weight_target = numpy.random.normal(size=(n, 1))
-noise = noise.MixedGaussionNoiseGenerator((1,2,3,4,5),(5,4,3,2,1),(1,2,3,4,5)).getNoise(shape=(1,L))
+weight_ori = torch.from_numpy(numpy.random.normal(size=(n, 1))).to(device)
+weight_target = torch.from_numpy(numpy.random.normal(size=(n, 1))).to(device)
+noise = noise.MixedGaussionNoiseGenerator(mean=(1,2,3),sigma=(3,2,1),weight=(8,7,6)).getNoise(shape=(1,L),backend="pytorch",device=device)
 # noise = numpy.random.normal(size=(1, L))
-input = numpy.random.normal(size=(n, L))
-algo = LMS(0.001, n, L)
-res = algo.iterate(input, weight_ori, noise, weight_target, criterion=cri.getNorm())
+input = torch.from_numpy(numpy.random.normal(size=(n, L))).to(device)
+algo = NLMS(0.1, n, L)
+res = algo.iterate(input, weight_ori, noise, weight_target, criterion=cri.getNorm("pytorch"),backend="pytorch")
 x = numpy.linspace(0, len(res), len(res))
 plt.plot(x, res)
+plt.title("n=1000")
 plt.show()
+
+# device = "cuda:0"
+# n = 100
+# L = 10000
+# weight_ori = numpy.random.normal(size=(n, 1))
+# weight_target = numpy.random.normal(size=(n, 1))
+# noise = noise.MixedGaussionNoiseGenerator((1,2,3,4,5),(5,4,3,2,1),(1,2,3,4,5)).getNoise(shape=(1,L))
+# # noise = numpy.random.normal(size=(1, L))
+# input = numpy.random.normal(size=(n, L))
+# algo = NLMS(0.1, n, L)
+# res = algo.iterate(input, weight_ori, noise, weight_target, criterion=cri.getNorm())
+# x = numpy.linspace(0, len(res), len(res))
+# plt.plot(x, res)
+# plt.show()
