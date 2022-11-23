@@ -9,5 +9,5 @@
 2022/11/20 18:27   risingentropy      1.0         None
 '''
 
-LIBNAME = "AdaptiveFilteringLib"
+LIBNAME = "AdvF"  # short for adaptive filtering
 TORCH_DEVICE = "cpu"
